@@ -8,100 +8,169 @@ const { Server } = require('socket.io');
 const { makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason, delay } = require('@whiskeysockets/baileys');
 const P = require('pino');
 const { nanoid } = require('nanoid');
+const qrcode = require('qrcode');
 
+// --- Config ---
+const PORT = process.env.PORT || 10000;
+const PASSWORD = 'CypherDeals';
 const BADWORDS_FILE = path.join(__dirname, 'badwords.json');
+
+// Load bad words
 const badWords = JSON.parse(fs.readFileSync(BADWORDS_FILE, 'utf8')).badWords.map(w => w.toLowerCase());
 
+// --- Express + Socket.IO setup ---
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
-const PORT = process.env.PORT || 10000;
-const PASSWORD = 'CypherDeals';
 
 app.use(express.json());
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// --- Session storage ---
 const sessions = {};
 const warnings = {};
 
-function ensureDir(p) { if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true }); }
+// --- Helpers ---
+function ensureDir(p) {
+  if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
+}
 
+ensureDir(path.join(__dirname, 'sessions'));
+
+// --- Auth middleware ---
 app.post('/api/login', (req, res) => {
   const { password } = req.body;
   if (password === PASSWORD) {
-    res.cookie('auth', crypto.createHash('sha256').update(PASSWORD).digest('hex'), { httpOnly: true });
+    const hash = crypto.createHash('sha256').update(PASSWORD).digest('hex');
+    res.cookie('auth', hash, { httpOnly: true });
     return res.json({ ok: true });
   }
-  return res.status(401).json({ ok: false });
+  return res.status(401).json({ ok: false, message: 'Wrong password' });
 });
 
 function auth(req, res, next) {
   const c = req.cookies.auth;
   const valid = crypto.createHash('sha256').update(PASSWORD).digest('hex');
   if (c === valid) return next();
-  res.status(401).json({ ok: false });
+  res.status(401).json({ ok: false, message: 'Unauthorized' });
 }
 
+// --- Create WhatsApp session ---
 app.post('/api/create-session', auth, async (req, res) => {
   const number = req.body.number || 'unknown';
   const sessionId = nanoid(8);
   const sessionPath = path.join(__dirname, 'sessions', sessionId);
   ensureDir(sessionPath);
+
   fs.writeFileSync(path.join(sessionPath, 'info.json'), JSON.stringify({ number, created: new Date() }, null, 2));
 
-  async function createSessionAgain() {
-    try {
-      const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
-      const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        logger: P({ level: 'silent' }),
-        browser: Browsers.macOS('Cypher MDX')
-      });
-      sessions[sessionId] = sock;
-      warnings[sessionId] = {};
-      sock.ev.on('creds.update', saveCreds);
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
-      sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr, pairingCode } = update;
-        if (qr) {
-          const qrcode = require('qrcode');
-          qrcode.toDataURL(qr, (err, url) => { if (!err) io.to(sessionId).emit('qr', { dataUrl: url }); });
+    const sock = makeWASocket({
+      auth: state,
+      printQRInTerminal: false,
+      logger: P({ level: 'silent' }),
+      browser: Browsers.macOS('Cypher MDX')
+    });
+
+    sessions[sessionId] = sock;
+    warnings[sessionId] = {};
+
+    // Save credentials
+    sock.ev.on('creds.update', saveCreds);
+
+    // Connection events
+    sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect, qr, pairingCode } = update;
+
+      if (qr) {
+        qrcode.toDataURL(qr, (err, url) => {
+          if (!err) io.to(sessionId).emit('qr', { dataUrl: url });
+        });
+      }
+
+      if (pairingCode) io.to(sessionId).emit('pairing', { code: pairingCode });
+
+      io.to(sessionId).emit('connection', { connection });
+
+      if (connection === 'open') io.to(sessionId).emit('connected', {});
+
+      if (connection === 'close') {
+        const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
+        if (shouldReconnect) {
+          console.log('🔁 Reconnecting session', sessionId);
+          setTimeout(() => startSock(sessionId), 5000);
+        } else {
+          io.to(sessionId).emit('disconnected', {});
         }
-        if (pairingCode) io.to(sessionId).emit('pairing', { code: pairingCode });
-        io.to(sessionId).emit('connection', { connection });
+      }
+    });
 
-        if (connection === 'open') io.to(sessionId).emit('connected', {});
-        if (connection === 'close') {
-          const reason = lastDisconnect?.error?.output?.statusCode;
-          if (reason !== DisconnectReason.loggedOut) {
-            console.log('🔁 Reconnecting session', sessionId);
-            setTimeout(createSessionAgain, 5000);
-          } else io.to(sessionId).emit('disconnected', {});
-        }
-      });
+    // Messages events
+    sock.ev.on('messages.upsert', async ({ messages }) => {
+      const msg = messages[0];
+      if (!msg.message || msg.key.fromMe) return;
 
-      sock.ev.on('messages.upsert', async ({ messages }) => {
-        const msg = messages[0];
-        if (!msg.message || msg.key.fromMe) return;
-        const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
-        const from = msg.key.remoteJid;
-        const sender = msg.key.participant || msg.key.remoteJid;
+      const text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+      const from = msg.key.remoteJid;
+      const sender = msg.key.participant || msg.key.remoteJid;
 
-        const hasBadWord = badWords.some(w => text.toLowerCase().includes(w));
-        const hasLink = /(https?:\/\/|www\.)\S+/i.test(text);
-        if (hasBadWord || hasLink) {
-          const jid = sender;
-          warnings[sessionId][jid] = (warnings[sessionId][jid] || 0) + 1;
-          const count = warnings[sessionId][jid];
-          await sock.sendMessage(from, { text: `⚠️ @${jid.split('@')[0]}, warning ${count}/3`, mentions: [jid] });
-          await delay(400);
-          await sock.sendMessage(from, { delete: msg.key });
-          if (count >= 3) {
-            try {
-              await sock.groupParticipantsUpdate(from, [jid], 'remove');
-              await sock.sendMessage(from, { text: `🚫 @${jid.split('@')[0]} removed after 3 warnings`, mentions: [jid] });
-            } catch {}
+      const containsBadWord = badWords.some(word => text.toLowerCase().includes(word));
+      const containsLink = /(https?:\/\/|www\.)\S+/i.test(text);
+
+      if (containsBadWord || containsLink) {
+        const jid = sender;
+        warnings[sessionId][jid] = (warnings[sessionId][jid] || 0) + 1;
+        const count = warnings[sessionId][jid];
+
+        await sock.sendMessage(from, {
+          text: `⚠️ @${jid.split('@')[0]}, warning ${count}/3: stop sending links or vulgar words!`,
+          mentions: [jid]
+        });
+
+        await delay(500);
+        await sock.sendMessage(from, { delete: msg.key });
+
+        if (count >= 3) {
+          try {
+            await sock.groupParticipantsUpdate(from, [jid], 'remove');
+            await sock.sendMessage(from, {
+              text: `🚫 @${jid.split('@')[0]} has been removed after 3 warnings.`,
+              mentions: [jid]
+            });
+          } catch (err) {
+            console.log('Kick error:', err);
           }
-          io.to(sessionId).emit('warnings', warnings[sessionId]);
+        }
+
+        io.to(sessionId).emit('warnings', warnings[sessionId]);
+      }
+    });
+
+    res.json({ ok: true, sessionId });
+  } catch (err) {
+    console.error('Failed to create session:', err);
+    res.status(500).json({ ok: false, message: 'Failed to create session' });
+  }
+});
+
+// --- Get warnings API ---
+app.get('/api/warnings/:sid', auth, (req, res) => {
+  const sid = req.params.sid;
+  res.json(warnings[sid] || {});
+});
+
+// --- Socket.IO connection ---
+io.on('connection', (socket) => {
+  socket.on('join-session', (data) => {
+    const { sessionId } = data;
+    if (sessionId) socket.join(sessionId);
+  });
+});
+
+// --- Start server ---
+server.listen(PORT, () => {
+  console.log(`⚡ Cypher MDX running on port ${PORT}`);
+});
