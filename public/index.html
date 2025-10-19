@@ -25,10 +25,7 @@
       min-height: 100vh;
       padding: 20px;
     }
-    .container {
-      width: 100%;
-      max-width: 980px;
-    }
+    .container { width: 100%; max-width: 980px; }
     .card {
       background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
       border-radius: 12px;
@@ -37,52 +34,27 @@
       box-shadow: 0 6px 24px var(--glow);
       margin-bottom: 14px;
     }
-    header {
-      display: flex;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 8px;
-    }
+    header { display: flex; gap: 12px; align-items: center; margin-bottom: 8px; }
     .logo {
-      width: 56px;
-      height: 56px;
+      width: 56px; height: 56px;
       background: linear-gradient(135deg, #00e5ff, #6a00ff);
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      border-radius: 10px; display: flex; align-items: center; justify-content: center;
       box-shadow: 0 6px 20px rgba(0,229,255,0.06);
-      transform: translateZ(0);
     }
     .logo svg { width: 36px; height: 36px; filter: drop-shadow(0 4px 12px rgba(0,229,255,0.12)); }
     h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
     p.lead { margin: 4px 0 0 0; color: var(--muted); font-size: 13px; }
     .center { text-align: center; }
-    .password-box {
-      display: flex;
-      gap: 8px;
-      margin-top: 14px;
-      align-items: center;
-    }
-    input[type="password"] {
-      background: var(--glass);
-      border: 1px solid rgba(255,255,255,0.03);
-      padding: 12px 14px;
-      border-radius: 8px;
-      color: #e6eef6;
-      width: 100%;
-      outline: none;
-      font-size: 15px;
+    .password-box { display: flex; gap: 8px; margin-top: 14px; align-items: center; }
+    input[type="password"], input[type="tel"] {
+      background: var(--glass); border: 1px solid rgba(255,255,255,0.03);
+      padding: 12px 14px; border-radius: 8px; color: #e6eef6;
+      width: 100%; outline: none; font-size: 15px;
     }
     button {
       background: linear-gradient(90deg, #00e5ff, #6a00ff);
-      border: none;
-      color: #001018;
-      padding: 10px 14px;
-      border-radius: 8px;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: 0 8px 24px rgba(106,0,255,0.08);
+      border: none; color: #001018; padding: 10px 14px; border-radius: 8px;
+      font-weight: 700; cursor: pointer; box-shadow: 0 8px 24px rgba(106,0,255,0.08);
     }
     .muted { color: var(--muted); font-size: 13px; }
     .qr { width: 320px; height: 320px; background: #061018; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid rgba(255,255,255,0.03); overflow:hidden; }
@@ -103,7 +75,6 @@
     <div class="card center">
       <header>
         <div class="logo" aria-hidden="true">
-          <!-- small cypher-style SVG logo -->
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="2" y="2" width="20" height="20" rx="4" fill="white" fill-opacity="0.06"/>
             <path d="M7 16L11 8L13 12L17 6" stroke="url(#g)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -130,10 +101,17 @@
             <div style="flex:1;">
               <strong>Cypher MDX — Pair & Connect</strong>
               <div class="muted" style="margin-top:6px">Protect groups by removing links & vulgar words automatically.</div>
+
+              <!-- new number input -->
+              <div style="margin-top:10px;">
+                <input id="numberInput" type="tel" placeholder="Enter WhatsApp number (e.g. +2348126159499)" />
+              </div>
+
               <div style="margin-top:10px;">
                 <button id="createBtn">Generate Pair Code</button>
               </div>
-              <div class="hint">After creating a session, open the session link (shown below) to view QR/pairing code and connect.</div>
+              <div class="hint">After creating a session, open WhatsApp → Linked Devices → Link a Device → Use a Code.</div>
+
               <div style="margin-top:12px;">
                 <div class="muted">Session link (share to connect):</div>
                 <div id="sessionLink" style="margin-top:6px;"><code>—</code></div>
@@ -159,7 +137,7 @@
             <div style="width:320px; max-width:100%;" class="card">
               <strong>Info</strong>
               <p class="muted">Make the connected WhatsApp account <strong>admin</strong> in groups to allow message deletion and kicking.</p>
-              <p class="muted">This server creates persistent sessions under <code>/sessions/{sessionId}</code> on the host. Keep the instance online.</p>
+              <p class="muted">Sessions are stored under <code>/sessions/{sessionId}</code>.</p>
             </div>
           </div>
         </div>
@@ -172,10 +150,10 @@
 
 <script src="/socket.io/socket.io.js"></script>
 <script>
-  // simple front-end logic
   const createBtn = document.getElementById('createBtn');
   const pwBtn = document.getElementById('pwBtn');
   const pwInput = document.getElementById('pw');
+  const numberInput = document.getElementById('numberInput');
   const loginMsg = document.getElementById('loginMsg');
   const loginArea = document.getElementById('loginArea');
   const mainArea = document.getElementById('mainArea');
@@ -200,7 +178,6 @@
       });
       const j = await res.json();
       if (!j.ok) throw new Error(j.message || 'auth failed');
-      // success: show main area
       loginArea.style.display = 'none';
       mainArea.style.display = 'block';
       loginMsg.innerText = 'Access granted';
@@ -213,23 +190,25 @@
     }
   };
 
-  // create session flow
   createBtn.onclick = async () => {
+    const number = numberInput.value.trim();
+    if (!number) return alert('Please enter your WhatsApp number first');
     createBtn.disabled = true;
     createBtn.innerText = 'Creating...';
     try {
-      const res = await fetch('/api/create-session', { method: 'POST' });
+      const res = await fetch('/api/create-session', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ number })
+      });
       const j = await res.json();
       if (!j.ok || !j.sessionId) throw new Error(j.message || 'create failed');
       const sessionId = j.sessionId;
       const sessionUrl = `${location.origin}/?s=${sessionId}`;
       sessionLinkEl.innerHTML = `<code>${sessionUrl}</code>`;
-      // join socket room to receive QR/pairing for this session
       socket.emit('join-session', { sessionId });
-      // store activeSession for refresh actions
       window.__activeSession = sessionId;
       createBtn.innerText = 'Created ✓';
-      // refresh warnings
       fetchWarnings(sessionId);
     } catch (err) {
       console.error(err);
@@ -239,60 +218,15 @@
     }
   };
 
-  // auto-join if url has ?s=...
-  (function autoJoin(){
-    const params = new URLSearchParams(window.location.search);
-    const s = params.get('s');
-    if (s) {
-      // reveal main area only after password (we still require server login)
-      // try to fetch warnings (server will require cookie auth)
-      fetch('/api/warnings/' + s).then(r => {
-        if (r.status === 401) {
-          // not authenticated => show password prompt
-          return;
-        }
-        return r.json();
-      }).then(data => {
-        if (data) {
-          // assume logged in and allowed
-          loginArea.style.display = 'none';
-          mainArea.style.display = 'block';
-          sessionLinkEl.innerHTML = `<code>${location.origin}/?s=${s}</code>`;
-          window.__activeSession = s;
-          socket.emit('join-session', { sessionId: s });
-          fetchWarnings(s);
-        }
-      }).catch(()=>{});
-    }
-  })();
-
-  // socket handlers
   socket.on('qr', (d) => {
-    if (!d || !d.dataUrl) {
-      qrEl.innerHTML = 'No QR';
-      return;
-    }
+    if (!d || !d.dataUrl) return qrEl.innerHTML = 'No QR';
     qrEl.innerHTML = '<img src="' + d.dataUrl + '" style="width:300px;height:300px" />';
   });
-  socket.on('pairing', (d) => {
-    if (d && d.code) {
-      pairCodeEl.innerText = d.code + ' — use WhatsApp > Link a device > Use a code';
-    }
-  });
-  socket.on('connection', (d) => {
-    statusText.innerText = d.connection || 'unknown';
-  });
-  socket.on('connected', (d) => {
-    statusText.innerText = 'connected';
-    qrEl.innerHTML = 'Connected';
-    pairCodeEl.innerText = '';
-  });
-  socket.on('disconnected', (d) => {
-    statusText.innerText = 'disconnected';
-  });
-  socket.on('warnings', (d) => {
-    warningsPre.innerText = JSON.stringify(d, null, 2);
-  });
+  socket.on('pairing', (d) => { if (d && d.code) pairCodeEl.innerText = d.code; });
+  socket.on('connection', (d) => { statusText.innerText = d.connection || 'unknown'; });
+  socket.on('connected', () => { statusText.innerText = 'connected'; qrEl.innerHTML = 'Connected'; pairCodeEl.innerText = ''; });
+  socket.on('disconnected', () => { statusText.innerText = 'disconnected'; });
+  socket.on('warnings', (d) => { warningsPre.innerText = JSON.stringify(d, null, 2); });
 
   async function fetchWarnings(sid) {
     if (!sid) return;
@@ -301,15 +235,9 @@
       if (r.status === 401) return;
       const j = await r.json();
       warningsPre.innerText = JSON.stringify(j, null, 2);
-    } catch (e) {
-      warningsPre.innerText = 'error';
-    }
+    } catch { warningsPre.innerText = 'error'; }
   }
-
-  refreshBtn.onclick = () => {
-    fetchWarnings(window.__activeSession);
-  };
-
+  refreshBtn.onclick = () => fetchWarnings(window.__activeSession);
 </script>
 </body>
 </html>
