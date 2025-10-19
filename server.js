@@ -8,7 +8,6 @@ const { Server } = require('socket.io');
 const { makeWASocket, useMultiFileAuthState, Browsers, DisconnectReason, delay } = require('@whiskeysockets/baileys');
 const P = require('pino');
 const { nanoid } = require('nanoid');
-const qrcode = require('qrcode');
 
 // --- Config ---
 const PORT = process.env.PORT || 10000;
@@ -56,14 +55,10 @@ function auth(req, res, next) {
   res.status(401).json({ ok: false, message: 'Unauthorized' });
 }
 
-// --- Create WhatsApp session ---
-app.post('/api/create-session', auth, async (req, res) => {
-  const number = req.body.number || 'unknown';
-  const sessionId = nanoid(8);
+// --- Start or reconnect socket ---
+async function startSock(sessionId, number) {
   const sessionPath = path.join(__dirname, 'sessions', sessionId);
   ensureDir(sessionPath);
-
-  fs.writeFileSync(path.join(sessionPath, 'info.json'), JSON.stringify({ number, created: new Date() }, null, 2));
 
   try {
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
@@ -76,24 +71,18 @@ app.post('/api/create-session', auth, async (req, res) => {
     });
 
     sessions[sessionId] = sock;
-    warnings[sessionId] = {};
+    warnings[sessionId] = warnings[sessionId] || {};
 
-    // Save credentials
     sock.ev.on('creds.update', saveCreds);
 
-    // Connection events
+    // Connection updates
     sock.ev.on('connection.update', (update) => {
-      const { connection, lastDisconnect, qr, pairingCode } = update;
+      const { connection, lastDisconnect, pairingCode } = update;
 
-      if (qr) {
-        qrcode.toDataURL(qr, (err, url) => {
-          if (!err) io.to(sessionId).emit('qr', { dataUrl: url });
-        });
+      if (pairingCode) {
+        // Emit pairing code to frontend
+        io.to(sessionId).emit('pairing', { code: pairingCode });
       }
-
-      if (pairingCode) io.to(sessionId).emit('pairing', { code: pairingCode });
-
-      io.to(sessionId).emit('connection', { connection });
 
       if (connection === 'open') io.to(sessionId).emit('connected', {});
 
@@ -101,7 +90,7 @@ app.post('/api/create-session', auth, async (req, res) => {
         const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
         if (shouldReconnect) {
           console.log('🔁 Reconnecting session', sessionId);
-          setTimeout(() => startSock(sessionId), 5000);
+          setTimeout(() => startSock(sessionId, number), 5000);
         } else {
           io.to(sessionId).emit('disconnected', {});
         }
@@ -149,14 +138,32 @@ app.post('/api/create-session', auth, async (req, res) => {
       }
     });
 
+    return sock;
+  } catch (err) {
+    console.error('Failed to start session:', err);
+    throw err;
+  }
+}
+
+// --- API to create session ---
+app.post('/api/create-session', auth, async (req, res) => {
+  const number = req.body.number || 'unknown';
+  const sessionId = nanoid(8);
+
+  const sessionPath = path.join(__dirname, 'sessions', sessionId);
+  ensureDir(sessionPath);
+
+  fs.writeFileSync(path.join(sessionPath, 'info.json'), JSON.stringify({ number, created: new Date() }, null, 2));
+
+  try {
+    await startSock(sessionId, number);
     res.json({ ok: true, sessionId });
   } catch (err) {
-    console.error('Failed to create session:', err);
     res.status(500).json({ ok: false, message: 'Failed to create session' });
   }
 });
 
-// --- Get warnings API ---
+// --- API to get warnings ---
 app.get('/api/warnings/:sid', auth, (req, res) => {
   const sid = req.params.sid;
   res.json(warnings[sid] || {});
