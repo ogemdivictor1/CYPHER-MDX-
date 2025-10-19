@@ -1,0 +1,315 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Cypher MDX — Connect</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b0f13;
+      --card: #0f1720;
+      --muted: #9aa4b2;
+      --accent: #00e5ff;
+      --glow: rgba(0, 229, 255, 0.12);
+      --glass: rgba(255,255,255,0.02);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #040506 0%, #0b0f13 100%);
+      color: #e6eef6;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      width: 100%;
+      max-width: 980px;
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid rgba(255,255,255,0.03);
+      box-shadow: 0 6px 24px var(--glow);
+      margin-bottom: 14px;
+    }
+    header {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .logo {
+      width: 56px;
+      height: 56px;
+      background: linear-gradient(135deg, #00e5ff, #6a00ff);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 6px 20px rgba(0,229,255,0.06);
+      transform: translateZ(0);
+    }
+    .logo svg { width: 36px; height: 36px; filter: drop-shadow(0 4px 12px rgba(0,229,255,0.12)); }
+    h1 { margin: 0; font-size: 20px; letter-spacing: .2px; }
+    p.lead { margin: 4px 0 0 0; color: var(--muted); font-size: 13px; }
+    .center { text-align: center; }
+    .password-box {
+      display: flex;
+      gap: 8px;
+      margin-top: 14px;
+      align-items: center;
+    }
+    input[type="password"] {
+      background: var(--glass);
+      border: 1px solid rgba(255,255,255,0.03);
+      padding: 12px 14px;
+      border-radius: 8px;
+      color: #e6eef6;
+      width: 100%;
+      outline: none;
+      font-size: 15px;
+    }
+    button {
+      background: linear-gradient(90deg, #00e5ff, #6a00ff);
+      border: none;
+      color: #001018;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(106,0,255,0.08);
+    }
+    .muted { color: var(--muted); font-size: 13px; }
+    .qr { width: 320px; height: 320px; background: #061018; display:flex; align-items:center; justify-content:center; border-radius:8px; border:1px solid rgba(255,255,255,0.03); overflow:hidden; }
+    .pairing { margin-top: 8px; color: var(--muted); font-size: 13px; }
+    .status { margin-top: 8px; font-weight: 700; }
+    pre { background: rgba(255,255,255,0.02); padding: 12px; border-radius:8px; color: #dfeffb; overflow:auto; max-height:260px; }
+    code { color: #aef6ff; background: rgba(255,255,255,0.02); padding: 2px 6px; border-radius:4px; }
+    .row { display:flex; gap:12px; }
+    @media (max-width:880px) {
+      .row { flex-direction: column; }
+      .qr { width: 100%; height: auto; padding: 20px 0; }
+    }
+    .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card center">
+      <header>
+        <div class="logo" aria-hidden="true">
+          <!-- small cypher-style SVG logo -->
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="2" y="2" width="20" height="20" rx="4" fill="white" fill-opacity="0.06"/>
+            <path d="M7 16L11 8L13 12L17 6" stroke="url(#g)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            <defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#00e5ff"/><stop offset="1" stop-color="#6a00ff"/></linearGradient></defs>
+          </svg>
+        </div>
+        <div style="text-align:left">
+          <h1>Welcome to Cypher MDX</h1>
+          <p class="lead">Verify password to continue</p>
+        </div>
+      </header>
+
+      <div style="max-width:720px; margin:auto">
+        <div id="loginArea">
+          <div class="password-box">
+            <input id="pw" type="password" placeholder="Enter password" autocomplete="current-password"/>
+            <button id="pwBtn">Verify</button>
+          </div>
+          <div id="loginMsg" class="muted hint">Password is case-sensitive.</div>
+        </div>
+
+        <div id="mainArea" style="display:none; margin-top:18px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+            <div style="flex:1;">
+              <strong>Cypher MDX — Pair & Connect</strong>
+              <div class="muted" style="margin-top:6px">Protect groups by removing links & vulgar words automatically.</div>
+              <div style="margin-top:10px;">
+                <button id="createBtn">Generate Pair Code</button>
+              </div>
+              <div class="hint">After creating a session, open the session link (shown below) to view QR/pairing code and connect.</div>
+              <div style="margin-top:12px;">
+                <div class="muted">Session link (share to connect):</div>
+                <div id="sessionLink" style="margin-top:6px;"><code>—</code></div>
+              </div>
+            </div>
+
+            <div style="width:360px; max-width:100%;">
+              <div class="qr" id="qr">Waiting for QR...</div>
+              <div class="pairing" id="pairing">Pairing code: <span id="pairCode">—</span></div>
+              <div class="status" id="status">Status: <span id="statusText">not connected</span></div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px;" class="row">
+            <div style="flex:1;" class="card">
+              <strong>Warnings (preview)</strong>
+              <pre id="warnings">No data</pre>
+              <div style="margin-top:10px;">
+                <button id="refreshWarnings">Refresh Warnings</button>
+              </div>
+            </div>
+
+            <div style="width:320px; max-width:100%;" class="card">
+              <strong>Info</strong>
+              <p class="muted">Make the connected WhatsApp account <strong>admin</strong> in groups to allow message deletion and kicking.</p>
+              <p class="muted">This server creates persistent sessions under <code>/sessions/{sessionId}</code> on the host. Keep the instance online.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div style="text-align:center; color:var(--muted); margin-top:8px;">Cypher MDX — Protecting your WhatsApp groups</div>
+  </div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  // simple front-end logic
+  const createBtn = document.getElementById('createBtn');
+  const pwBtn = document.getElementById('pwBtn');
+  const pwInput = document.getElementById('pw');
+  const loginMsg = document.getElementById('loginMsg');
+  const loginArea = document.getElementById('loginArea');
+  const mainArea = document.getElementById('mainArea');
+  const qrEl = document.getElementById('qr');
+  const pairCodeEl = document.getElementById('pairCode');
+  const statusText = document.getElementById('statusText');
+  const sessionLinkEl = document.getElementById('sessionLink');
+  const warningsPre = document.getElementById('warnings');
+  const refreshBtn = document.getElementById('refreshWarnings');
+
+  const socket = io();
+
+  pwBtn.onclick = async () => {
+    const pw = pwInput.value || '';
+    pwBtn.disabled = true;
+    pwBtn.innerText = 'Verifying...';
+    try {
+      const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ password: pw })
+      });
+      const j = await res.json();
+      if (!j.ok) throw new Error(j.message || 'auth failed');
+      // success: show main area
+      loginArea.style.display = 'none';
+      mainArea.style.display = 'block';
+      loginMsg.innerText = 'Access granted';
+      loginMsg.style.color = '#8ff8ff';
+    } catch (e) {
+      loginMsg.innerText = 'Invalid password';
+      loginMsg.style.color = '#ff8f9b';
+      pwBtn.disabled = false;
+      pwBtn.innerText = 'Verify';
+    }
+  };
+
+  // create session flow
+  createBtn.onclick = async () => {
+    createBtn.disabled = true;
+    createBtn.innerText = 'Creating...';
+    try {
+      const res = await fetch('/api/create-session', { method: 'POST' });
+      const j = await res.json();
+      if (!j.ok || !j.sessionId) throw new Error(j.message || 'create failed');
+      const sessionId = j.sessionId;
+      const sessionUrl = `${location.origin}/?s=${sessionId}`;
+      sessionLinkEl.innerHTML = `<code>${sessionUrl}</code>`;
+      // join socket room to receive QR/pairing for this session
+      socket.emit('join-session', { sessionId });
+      // store activeSession for refresh actions
+      window.__activeSession = sessionId;
+      createBtn.innerText = 'Created ✓';
+      // refresh warnings
+      fetchWarnings(sessionId);
+    } catch (err) {
+      console.error(err);
+      createBtn.innerText = 'Generate Pair Code';
+      createBtn.disabled = false;
+      alert('Could not create session. Make sure you are logged in.');
+    }
+  };
+
+  // auto-join if url has ?s=...
+  (function autoJoin(){
+    const params = new URLSearchParams(window.location.search);
+    const s = params.get('s');
+    if (s) {
+      // reveal main area only after password (we still require server login)
+      // try to fetch warnings (server will require cookie auth)
+      fetch('/api/warnings/' + s).then(r => {
+        if (r.status === 401) {
+          // not authenticated => show password prompt
+          return;
+        }
+        return r.json();
+      }).then(data => {
+        if (data) {
+          // assume logged in and allowed
+          loginArea.style.display = 'none';
+          mainArea.style.display = 'block';
+          sessionLinkEl.innerHTML = `<code>${location.origin}/?s=${s}</code>`;
+          window.__activeSession = s;
+          socket.emit('join-session', { sessionId: s });
+          fetchWarnings(s);
+        }
+      }).catch(()=>{});
+    }
+  })();
+
+  // socket handlers
+  socket.on('qr', (d) => {
+    if (!d || !d.dataUrl) {
+      qrEl.innerHTML = 'No QR';
+      return;
+    }
+    qrEl.innerHTML = '<img src="' + d.dataUrl + '" style="width:300px;height:300px" />';
+  });
+  socket.on('pairing', (d) => {
+    if (d && d.code) {
+      pairCodeEl.innerText = d.code + ' — use WhatsApp > Link a device > Use a code';
+    }
+  });
+  socket.on('connection', (d) => {
+    statusText.innerText = d.connection || 'unknown';
+  });
+  socket.on('connected', (d) => {
+    statusText.innerText = 'connected';
+    qrEl.innerHTML = 'Connected';
+    pairCodeEl.innerText = '';
+  });
+  socket.on('disconnected', (d) => {
+    statusText.innerText = 'disconnected';
+  });
+  socket.on('warnings', (d) => {
+    warningsPre.innerText = JSON.stringify(d, null, 2);
+  });
+
+  async function fetchWarnings(sid) {
+    if (!sid) return;
+    try {
+      const r = await fetch('/api/warnings/' + sid);
+      if (r.status === 401) return;
+      const j = await r.json();
+      warningsPre.innerText = JSON.stringify(j, null, 2);
+    } catch (e) {
+      warningsPre.innerText = 'error';
+    }
+  }
+
+  refreshBtn.onclick = () => {
+    fetchWarnings(window.__activeSession);
+  };
+
+</script>
+</body>
+</html>
