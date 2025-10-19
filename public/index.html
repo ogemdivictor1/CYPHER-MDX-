@@ -102,7 +102,6 @@
               <strong>Cypher MDX — Pair & Connect</strong>
               <div class="muted" style="margin-top:6px">Protect groups by removing links & vulgar words automatically.</div>
 
-              <!-- new number input -->
               <div style="margin-top:10px;">
                 <input id="numberInput" type="tel" placeholder="Enter WhatsApp number (e.g. +2348126159499)" />
               </div>
@@ -110,9 +109,14 @@
               <div style="margin-top:10px;">
                 <button id="createBtn">Generate Pair Code</button>
               </div>
-              <div class="hint">After creating a session, open WhatsApp → Linked Devices → Link a Device → Use a Code.</div>
 
-              <div style="margin-top:12px;">
+              <div id="pairCodeBox" style="margin-top:16px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.05); border-radius:8px; padding:14px;">
+                <div class="muted" style="font-size:13px;">Pairing Code:</div>
+                <div id="pairCode" style="margin-top:6px; font-size:24px; color:#00e5ff; letter-spacing:2px;">—</div>
+                <div class="hint">Use WhatsApp → Linked Devices → Link a Device → Use Code</div>
+              </div>
+
+              <div style="margin-top:16px;">
                 <div class="muted">Session link (share to connect):</div>
                 <div id="sessionLink" style="margin-top:6px;"><code>—</code></div>
               </div>
@@ -120,7 +124,6 @@
 
             <div style="width:360px; max-width:100%;">
               <div class="qr" id="qr">Waiting for QR...</div>
-              <div class="pairing" id="pairing">Pairing code: <span id="pairCode">—</span></div>
               <div class="status" id="status">Status: <span id="statusText">not connected</span></div>
             </div>
           </div>
@@ -137,7 +140,6 @@
             <div style="width:320px; max-width:100%;" class="card">
               <strong>Info</strong>
               <p class="muted">Make the connected WhatsApp account <strong>admin</strong> in groups to allow message deletion and kicking.</p>
-              <p class="muted">Sessions are stored under <code>/sessions/{sessionId}</code>.</p>
             </div>
           </div>
         </div>
@@ -182,7 +184,7 @@
       mainArea.style.display = 'block';
       loginMsg.innerText = 'Access granted';
       loginMsg.style.color = '#8ff8ff';
-    } catch (e) {
+    } catch {
       loginMsg.innerText = 'Invalid password';
       loginMsg.style.color = '#ff8f9b';
       pwBtn.disabled = false;
@@ -209,35 +211,21 @@
       socket.emit('join-session', { sessionId });
       window.__activeSession = sessionId;
       createBtn.innerText = 'Created ✓';
-      fetchWarnings(sessionId);
     } catch (err) {
-      console.error(err);
       createBtn.innerText = 'Generate Pair Code';
       createBtn.disabled = false;
-      alert('Could not create session. Make sure you are logged in.');
+      alert('Could not create session.');
     }
   };
 
-  socket.on('qr', (d) => {
-    if (!d || !d.dataUrl) return qrEl.innerHTML = 'No QR';
-    qrEl.innerHTML = '<img src="' + d.dataUrl + '" style="width:300px;height:300px" />';
-  });
-  socket.on('pairing', (d) => { if (d && d.code) pairCodeEl.innerText = d.code; });
+  socket.on('qr', (d) => { if (d?.dataUrl) qrEl.innerHTML = `<img src="${d.dataUrl}" width="300" height="300">`; });
+  socket.on('pairing', (d) => { pairCodeEl.innerText = d?.code || '—'; });
   socket.on('connection', (d) => { statusText.innerText = d.connection || 'unknown'; });
-  socket.on('connected', () => { statusText.innerText = 'connected'; qrEl.innerHTML = 'Connected'; pairCodeEl.innerText = ''; });
+  socket.on('connected', () => { statusText.innerText = 'connected'; qrEl.innerHTML = 'Connected'; });
   socket.on('disconnected', () => { statusText.innerText = 'disconnected'; });
   socket.on('warnings', (d) => { warningsPre.innerText = JSON.stringify(d, null, 2); });
 
-  async function fetchWarnings(sid) {
-    if (!sid) return;
-    try {
-      const r = await fetch('/api/warnings/' + sid);
-      if (r.status === 401) return;
-      const j = await r.json();
-      warningsPre.innerText = JSON.stringify(j, null, 2);
-    } catch { warningsPre.innerText = 'error'; }
-  }
-  refreshBtn.onclick = () => fetchWarnings(window.__activeSession);
+  refreshBtn.onclick = () => fetch(`/api/warnings/${window.__activeSession}`).then(r => r.json()).then(j => warningsPre.innerText = JSON.stringify(j, null, 2));
 </script>
 </body>
 </html>
